@@ -27,6 +27,11 @@ sub import {
     *{"$caller\::has"} = sub {
         my ($attr_name, %predicates) = @_;
         push @{ $all_attribute_specs{$caller} }, [$attr_name, \%predicates];
+
+        # define the sub first, to allow things like Role::Tiny::With to check
+        # the existence of required methods
+        my $is = $predicates{is} // 'ro';
+        *{"$caller\::$attr_name"} = $is eq 'rw' ? sub(;$) {} : sub() {};
     };
     after_runtime {
         my @attr_specs;
@@ -34,36 +39,39 @@ sub import {
         # prepend the parent classes' attributes
         _collect_attributes($caller, $caller, \@attr_specs);
 
-        # generate the accessor methods
-        my $idx = 0;
         my $glob_attr;
         my %attr_indexes;
-        for my $attr_spec (@attr_specs) {
-            my ($attr_name, $predicates) = @$attr_spec;
-            next if defined $attr_indexes{$attr_name};
-            $attr_indexes{$attr_name} = $idx;
-            die "Class $caller attribute $attr_name: can't declare ".
-                "another attribute after globbing attribute ($glob_attr)"
+        # generate the accessor methods
+        {
+            no warnings 'redefine';
+            my $idx = 0;
+            for my $attr_spec (@attr_specs) {
+                my ($attr_name, $predicates) = @$attr_spec;
+                next if defined $attr_indexes{$attr_name};
+                $attr_indexes{$attr_name} = $idx;
+                die "Class $caller attribute $attr_name: can't declare ".
+                    "another attribute after globbing attribute ($glob_attr)"
                     if defined $glob_attr;
-            if ($predicates->{glob}) {
-                $glob_attr = $attr_name;
+                if ($predicates->{glob}) {
+                    $glob_attr = $attr_name;
+                }
+                my $is = $predicates->{is} // 'ro';
+                my $code_str = $is eq 'rw' ? 'sub (;$) { ' : 'sub () { ';
+                if (defined $glob_attr) {
+                    $code_str .= "splice(\@{\$_[0]}, $idx, scalar(\@{\$_[0]}), \@{\$_[1]}) if \@_ > 1; "
+                        if $is eq 'rw';
+                    $code_str .= "[ \@{\$_[0]}[$idx .. \$#{\$_[0]}] ]; ";
+                } else {
+                    $code_str .= "\$_[0][$idx] = \$_[1] if \@_ > 1; "
+                        if $is eq 'rw';
+                    $code_str .= "\$_[0][$idx]; ";
+                }
+                $code_str .= "}";
+                #say "D:accessor code for attr $attr_name: ", $code_str;
+                *{"$caller\::$attr_name"} = eval $code_str;
+                die if $@;
+                $idx++;
             }
-            my $is = $predicates->{is} // 'ro';
-            my $code_str = $is eq 'rw' ? 'sub (;$) { ' : 'sub () { ';
-            if (defined $glob_attr) {
-                $code_str .= "splice(\@{\$_[0]}, $idx, scalar(\@{\$_[0]}), \@{\$_[1]}) if \@_ > 1; "
-                    if $is eq 'rw';
-                $code_str .= "[ \@{\$_[0]}[$idx .. \$#{\$_[0]}] ]; ";
-            } else {
-                $code_str .= "\$_[0][$idx] = \$_[1] if \@_ > 1; "
-                    if $is eq 'rw';
-                $code_str .= "\$_[0][$idx]; ";
-            }
-            $code_str .= "}";
-            #say "D:accessor code for attr $attr_name: ", $code_str;
-            *{"$caller\::$attr_name"} = eval $code_str;
-            die if $@;
-            $idx++;
         }
 
         # generate constructor
@@ -71,7 +79,7 @@ sub import {
             my $code_str = 'sub { ';
             $code_str .= 'my ($class, %args) = @_; ';
             if (defined $glob_attr) {
-                $code_str .= 'my $obj = bless [(undef) x '.scalar(keys %attr_indexes).'], $class; ';
+                $code_str .= 'my $obj = bless [(undef) x '.(scalar(keys %attr_indexes)-1).'], $class; ';
             } else {
                 $code_str .= 'my $obj = bless [], $class; ';
             }
@@ -90,11 +98,14 @@ sub import {
                 die if $@;
             };
         }
+
+        # cleanup, so user can't do $obj->has(...) etc later
+        undef *{"$caller\::has"};
     };
 }
 
 1;
-# ABSTRACT:
+# ABSTRACT: Generate Class accessors/constructor (array-based object, supports globbing attribute)
 
 =for Pod::Coverage .+
 
