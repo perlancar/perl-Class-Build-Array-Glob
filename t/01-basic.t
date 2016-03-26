@@ -12,11 +12,11 @@ use Test::More 0.98;
 use Local::C1;
 use Local::C2;
 
-my $c1 = C1->new(baz => [1]);
+my $c1 = Local::C1->new(baz => [1]);
 
 is_deeply($c1, bless([undef, undef, [1]], "Local::C1"));
 
-my $c2 = C2->new;
+my $c2 = Local::C2->new;
 $c2->foo(1);
 $c2->bar("two");
 $c2->baz([3]);

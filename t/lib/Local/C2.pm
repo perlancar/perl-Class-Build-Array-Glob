@@ -1,7 +1,7 @@
 package # hide from PAUSE
     Local::C2;
 
-use Class::Accessor::Array::Glob;
+use Class::Build::Array::Glob;
 
 use parent qw(Local::C1);
 

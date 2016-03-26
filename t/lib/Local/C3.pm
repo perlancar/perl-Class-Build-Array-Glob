@@ -5,7 +5,7 @@ package # hide from PAUSE
 
 use parent qw(Local::C2);
 
-use Class::Accessor::Array::Glob;
+use Class::Build::Array::Glob;
 
 has moreglob => (is => 'rw', glob => 1);
 
