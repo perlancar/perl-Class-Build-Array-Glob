@@ -149,6 +149,11 @@ complex data in your attributes. It's just that with a globbing attribute, you
 can keep a single flat array backend, so the overall number of arrays is
 minimized.
 
+An example of application: tree node objects, where the first attribute (array
+element) is the parent, then zero or more extra attributes, then the last
+attribute is a globbing one storing zero or more children. This is how
+L<Mojo::DOM> stores its HTML tree node, for example.
+
 
 =head1 SEE ALSO
 
